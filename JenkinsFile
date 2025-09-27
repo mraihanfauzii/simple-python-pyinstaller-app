@@ -1,0 +1,34 @@
+// Jenkinsfile (Scripted) - Python sample
+node {
+  sh 'rm -f pipeline.log || true; mkdir -p test-reports; echo "Start: $(date -u)" | tee -a pipeline.log'
+
+  stage('Checkout') {
+    checkout scm
+  }
+
+  stage('Build') {
+    docker.image('python:3.11-slim').inside {
+      sh '''
+        python --version | tee -a pipeline.log
+        pip install --upgrade pip 2>&1 | tee -a pipeline.log
+        pip install pytest 2>&1 | tee -a pipeline.log
+        python -m py_compile sources/add2vals.py sources/calc.py 2>&1 | tee -a pipeline.log
+      '''
+    }
+  }
+
+  stage('Test') {
+    docker.image('python:3.11-slim').inside {
+      sh '''
+        mkdir -p test-reports
+        pytest -q sources/test_calc.py --junitxml=test-reports/results.xml 2>&1 | tee -a pipeline.log
+      '''
+    }
+  }
+
+  // Arsipkan log + publish hasil test ke Jenkins
+  try { } finally {
+    archiveArtifacts artifacts: 'pipeline.log', fingerprint: true, onlyIfSuccessful: false
+    junit 'test-reports/results.xml'
+  }
+}
